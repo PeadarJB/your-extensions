@@ -64,7 +64,7 @@ const Setting = (props: AllWidgetSettingProps<IMConfig>) => {
   const onFieldSelected = (allSelectedFields: IMFieldSchema[], ds: DataSource, isSelectedFromRepeatedDataSourceContext: boolean): void => {
     // The FieldSelector can return multiple fields if `isMultiple` is true,
     // but we only care about the first one for this setting.
-    const newField = allSelectedFields && allSelectedFields.length > 0 ? allSelectedFields[0].jimuName : undefined;
+    const newField = (allSelectedFields && allSelectedFields.length > 0 && allSelectedFields[0]) ? allSelectedFields[0].jimuName : undefined;
     onSettingChange({
       id: id,
       config: { ...currentConfig, statisticField: newField }
