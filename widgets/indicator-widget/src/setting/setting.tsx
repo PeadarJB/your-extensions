@@ -5,16 +5,15 @@ import {
   DataSourceTypes,
   Immutable,
   type ImmutableObject,
-  type FieldSchema,
-  DataSourceManager,
-  type UseDataSource
+  type IMFieldSchema,
+  type UseDataSource,
+  type DataSource,
+  JimuFieldType
 } from 'jimu-core';
 import type { AllWidgetSettingProps } from 'jimu-for-builder';
 import { DataSourceSelector, FieldSelector } from 'jimu-ui/advanced/data-source-selector';
 import { SettingSection, SettingRow } from 'jimu-ui/advanced/setting-components';
 import { Select, NumericInput, TextInput } from 'jimu-ui';
-
-const { useState, useEffect } = React;
 
 // Define the structure of our widget's configuration
 export interface Config {
@@ -46,38 +45,8 @@ const defaultConfig: Config = {
 const Setting = (props: AllWidgetSettingProps<IMConfig>) => {
   const { id, useDataSources, onSettingChange, config } = props;
 
-  // State to hold the list of available numeric fields from the selected data source
-  const [availableNumericFields, setAvailableNumericFields] = useState<FieldSchema[]>([]);
-
   // Helper to merge current config with default values
   const currentConfig = { ...defaultConfig, ...config };
-
-  // Effect hook: This code runs when `useDataSources` changes.
-  // Its purpose is to fetch the schema of the selected data source
-  // and populate the `availableNumericFields` state.
-  useEffect(() => {
-    if (useDataSources && useDataSources.length > 0) {
-      const dsId = useDataSources[0].dataSourceId;
-      const dsManager = DataSourceManager.getInstance();
-      const ds = dsManager.getDataSource(dsId);
-
-      if (ds) {
-        const schema = ds.getSchema();
-        if (schema && schema.fields) {
-          const numericFields = Object.values(schema.fields).filter(
-            (field) => field.type === 'esriFieldTypeInteger' || field.type === 'esriFieldTypeDouble' || field.type === 'esriFieldTypeSingle'
-          );
-          setAvailableNumericFields(numericFields.asMutable({deep: true}));
-        } else {
-          setAvailableNumericFields([]);
-        }
-      } else {
-        setAvailableNumericFields([]);
-      }
-    } else {
-      setAvailableNumericFields([]);
-    }
-  }, [useDataSources]); // This effect depends on `useDataSources`
 
   const onDataSourceChange = (newUseDataSources: UseDataSource[]): void => {
     // When the data source changes, reset the selected field and other dependent settings
@@ -92,7 +61,7 @@ const Setting = (props: AllWidgetSettingProps<IMConfig>) => {
     // Fields will be repopulated by the useEffect hook
   };
 
-  const onFieldSelected = (allSelectedFields: FieldSchema[]): void => {
+  const onFieldSelected = (allSelectedFields: IMFieldSchema[], ds: DataSource, isSelectedFromRepeatedDataSourceContext: boolean): void => {
     // The FieldSelector can return multiple fields if `isMultiple` is true,
     // but we only care about the first one for this setting.
     const newField = allSelectedFields && allSelectedFields.length > 0 ? allSelectedFields[0].jimuName : undefined;
@@ -147,7 +116,7 @@ const Setting = (props: AllWidgetSettingProps<IMConfig>) => {
                 onChange={onFieldSelected}
                 selectedFields={currentConfig.statisticField ? Immutable([currentConfig.statisticField]) : Immutable([])}
                 isMultiple={false}
-                fields={availableNumericFields}
+                types={Immutable([JimuFieldType.Number])}
                 placeholder="Select a numeric field"
               />
             </SettingRow>
