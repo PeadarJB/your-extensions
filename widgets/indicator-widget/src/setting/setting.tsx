@@ -182,7 +182,7 @@ const Setting = (props: AllWidgetSettingProps<IMConfig>) => {
             <SettingRow label="Prefix">
               <TextInput
                 value={currentConfig.prefix}
-                onChange={(e) => onConfigChange('prefix', e.target.value)}
+                onChange={(e) => { onConfigChange('prefix', e.target.value); }}
                 placeholder="e.g., Total: "
                 size="sm"
               />
@@ -191,7 +191,7 @@ const Setting = (props: AllWidgetSettingProps<IMConfig>) => {
             <SettingRow label="Suffix">
               <TextInput
                 value={currentConfig.suffix}
-                onChange={(e) => onConfigChange('suffix', e.target.value)}
+                onChange={(e) => {onConfigChange('suffix', e.target.value); }}
                 placeholder="e.g., km affected"
                 size="sm"
               />
@@ -201,7 +201,7 @@ const Setting = (props: AllWidgetSettingProps<IMConfig>) => {
               <input
                 type="checkbox"
                 checked={currentConfig.showSecondaryValue}
-                onChange={(e) => onConfigChange('showSecondaryValue', e.target.checked)}
+                onChange={(e) => {onConfigChange('showSecondaryValue', e.target.checked); }}
               />
             </SettingRow>
 
@@ -210,7 +210,7 @@ const Setting = (props: AllWidgetSettingProps<IMConfig>) => {
                 <SettingRow label="Secondary Prefix">
                   <TextInput
                     value={currentConfig.secondaryPrefix}
-                    onChange={(e) => onConfigChange('secondaryPrefix', e.target.value)}
+                    onChange={(e) => {onConfigChange('secondaryPrefix', e.target.value); }}
                     placeholder="e.g., "
                     size="sm"
                   />
@@ -219,7 +219,7 @@ const Setting = (props: AllWidgetSettingProps<IMConfig>) => {
                 <SettingRow label="Secondary Suffix">
                   <TextInput
                     value={currentConfig.secondarySuffix}
-                    onChange={(e) => onConfigChange('secondarySuffix', e.target.value)}
+                    onChange={(e) => {onConfigChange('secondarySuffix', e.target.value); }}
                     placeholder="e.g., % of total network"
                     size="sm"
                   />
