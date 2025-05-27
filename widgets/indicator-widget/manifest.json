@@ -1,5 +1,5 @@
 {
-  "name": "custom-indicator",
+  "name": "indicator-widget",
   "label": "Custom Indicator",
   "type": "widget",
   "version": "1.17.0",
