@@ -1,5 +1,6 @@
 /** @jsx jsx */
-import { React, jsx, type AllWidgetSettingProps, DataSourceTypes, Immutable } from 'jimu-core';
+import { React, jsx, DataSourceTypes, Immutable } from 'jimu-core';
+import  type { AllWidgetSettingProps } from 'jimu-for-builder';
 import { DataSourceSelector } from 'jimu-ui/advanced/data-source-selector';
 import { SettingSection } from 'jimu-ui/advanced/setting-components';
 
@@ -30,7 +31,7 @@ const Setting = (props: AllWidgetSettingProps<any>) => {
         />
       </SettingSection>
       <hr />
-      <p className="text-muted small">
+      <p className="text-disabled small">
         More settings for field selection, statistics, and appearance will be added here later.
       </p>
     </div>

@@ -8,9 +8,9 @@ import { React, jsx, type AllWidgetProps } from 'jimu-core';
 const Widget = (props: AllWidgetProps<any>) => {
   const { useDataSources, id } = props;
 
-  let dataSouceSelectedMessage = "No data source selected.";
+  let dataSourceSelectedMessage = "No data source selected.";
   if (useDataSources && useDataSources.length > 0 && useDataSources[0].dataSourceId) {
-    dataSouceSelectedMessage = `Data source selected: ${useDataSources[0].dataSourceId}`;
+    dataSourceSelectedMessage = `Data source selected: ${useDataSources[0].dataSourceId}`;
   }
 
   return (
@@ -19,10 +19,10 @@ const Widget = (props: AllWidgetProps<any>) => {
       <p style={{ fontSize: '2em', fontWeight: 'bold', margin: '10px 0' }}>
         ---
       </p>
-      <p className="text-muted small">
-        {dataSouceSelectedMessage}
+      <p className="text-disabled small">
+        {dataSourceSelectedMessage}
       </p>
-      <p className="text-muted small">Widget ID: {id}</p>
+      <p className="text-disabled small">Widget ID: {id}</p>
     </div>
   );
 };
