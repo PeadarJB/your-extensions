@@ -8,7 +8,7 @@
   "description": "Displays a summarized value from a selected data source.",
   "copyright": "",
   "license": "Apache-2.0",
-  "dependency": ["jimu-arcgis","jimu-ui"],
+  "dependency": ["jimu-arcgis","jimu-ui", "jimu-for-builder"],
   "properties": {},
   "translatedLocales": [
     "en"
