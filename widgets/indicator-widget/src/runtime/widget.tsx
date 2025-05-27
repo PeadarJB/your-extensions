@@ -5,243 +5,221 @@ import {
   type AllWidgetProps,
   DataSourceManager,
   type QueriableDataSource,
-  type DataRecord,
-  type ImmutableObject
+  type FeatureLayerDataSource, // To cast the data source
+  css // For basic styling
 } from 'jimu-core';
 
-const { useState, useEffect } = React;
+const { useState, useEffect, useCallback } = React;
 
-// Import the Config interface we defined in setting.tsx
-interface Config {
+// Define the structure of our widget's configuration
+// This should ideally be in a shared src/config.ts file
+export interface Config {
   statisticField?: string;
   statisticType?: 'SUM' | 'AVG' | 'COUNT' | 'MIN' | 'MAX';
   divisor?: number;
   prefix?: string;
   suffix?: string;
+  showSecondaryValue?: boolean;
   secondaryPrefix?: string;
   secondarySuffix?: string;
-  showSecondaryValue?: boolean;
+  secondaryValueDenominator?: number; // For percentage calculation
+  decimalPlaces?: number; // For formatting the main value
+  secondaryDecimalPlaces?: number; // For formatting the secondary value
 }
 
-type IMConfig = ImmutableObject<Config>;
+// Define default values for our configuration
+const defaultConfig: Config = {
+  statisticField: undefined,
+  statisticType: 'SUM',
+  divisor: 1,
+  prefix: '',
+  suffix: '',
+  showSecondaryValue: false,
+  secondaryPrefix: '',
+  secondarySuffix: '%',
+  secondaryValueDenominator: undefined,
+  decimalPlaces: 1,
+  secondaryDecimalPlaces: 2
+};
 
-const Widget = (props: AllWidgetProps<IMConfig>) => {
-  const { useDataSources, id, config } = props;
+const Widget = (props: AllWidgetProps<Config>) => {
+  const { config, useDataSources, id } = props;
 
-  // State to hold the calculated values
-  const [primaryValue, setPrimaryValue] = useState<number | null>(null);
-  const [secondaryValue, setSecondaryValue] = useState<number | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [totalRecords, setTotalRecords] = useState<number>(0);
+  // Merge provided config with defaults to ensure all properties are available
+  const currentConfig = React.useMemo(() => ({ ...defaultConfig, ...config }), [config]);
 
-  // Default config values
-  const currentConfig: Config = {
-    statisticField: undefined,
-    statisticType: 'SUM',
-    divisor: 1,
-    prefix: '',
-    suffix: '',
-    secondaryPrefix: '',
-    secondarySuffix: '% of total',
-    showSecondaryValue: false,
-    ...config
-  };
+  const [mainValue, setMainValue] = useState<string | number>('---');
+  const [secondaryDisplayValue, setSecondaryDisplayValue] = useState<string | number>('');
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [dataSource, setDataSource] = useState<FeatureLayerDataSource | null>(null);
 
-  // Function to calculate statistics from data records
-  const calculateStatistic = (records: DataRecord[], field: string, type: string): number | null => {
-    if (!records || records.length === 0) return null;
-
-    const values: number[] = [];
-    records.forEach(record => {
-      const value = record.getData()[field];
-      if (typeof value === 'number' && !isNaN(value)) {
-        values.push(value);
-      }
-    });
-
-    if (values.length === 0) return null;
-
-    switch (type) {
-      case 'SUM':
-        return values.reduce((sum, val) => sum + val, 0);
-      case 'AVG':
-        return values.reduce((sum, val) => sum + val, 0) / values.length;
-      case 'COUNT':
-        return values.length;
-      case 'MIN':
-        return Math.min(...values);
-      case 'MAX':
-        return Math.max(...values);
-      default:
-        return values.reduce((sum, val) => sum + val, 0); // Default to SUM
-    }
-  };
-
-  // Function to format numbers for display
-  const formatNumber = (value: number): string => {
-    // Apply divisor
-    const adjustedValue = value / (currentConfig.divisor || 1);
-    
-    // Format with appropriate decimal places
-    if (adjustedValue >= 1000) {
-      return adjustedValue.toLocaleString(undefined, { maximumFractionDigits: 1 });
-    } else if (adjustedValue >= 10) {
-      return adjustedValue.toFixed(1);
-    } else {
-      return adjustedValue.toFixed(2);
-    }
-  };
-
-  // Function to query data and calculate values
-  const queryAndCalculate = async () => {
+  const fetchData = useCallback(async () => {
     if (!useDataSources || useDataSources.length === 0 || !currentConfig.statisticField) {
-      setPrimaryValue(null);
-      setSecondaryValue(null);
-      setError(null);
+      setMainValue('---');
+      setSecondaryDisplayValue('');
       return;
     }
 
     setIsLoading(true);
-    setError(null);
+
+    const dsId = useDataSources[0].dataSourceId;
+    let currentDs = dataSource;
+
+    // Get or update the data source instance if it has changed
+    if (!currentDs || currentDs.id !== dsId) {
+      const newDsInstance = DataSourceManager.getInstance().getDataSource(dsId) as FeatureLayerDataSource;
+      if (!newDsInstance) {
+        console.error(`Indicator Widget (${id}): Data source with ID ${dsId} not found.`);
+        setMainValue('Error: DS');
+        setSecondaryDisplayValue('');
+        setIsLoading(false);
+        return;
+      }
+      setDataSource(newDsInstance);
+      currentDs = newDsInstance;
+    }
+
+    // Ensure it's a QueriableDataSource (FeatureLayerDataSource is)
+    const queriableDs = currentDs as QueriableDataSource;
+
+    const statisticDefinition: any = {
+      onStatisticField: currentConfig.statisticField,
+      outStatisticFieldName: 'indicator_value',
+      statisticType: currentConfig.statisticType?.toLowerCase() || 'sum'
+    };
+
+    const queryParams: any = {
+      outStatistics: [statisticDefinition],
+      returnGeometry: false
+      // The current filters applied by other widgets are automatically included by the DataSource object
+    };
 
     try {
-      const dsManager = DataSourceManager.getInstance();
-      const ds = dsManager.getDataSource(useDataSources[0].dataSourceId) as QueriableDataSource;
+      const result = await queriableDs.query(queryParams);
 
-      if (!ds) {
-        throw new Error('Data source not found');
-      }
+      if (result && result.records && result.records.length > 0) {
+        const attributes = result.records[0].getData();
+        let calculatedValue = attributes.indicator_value;
 
-      // Query all records (this will automatically respect any active filters)
-      const queryResult = await ds.query({
-        where: '1=1', // Get all records
-        outFields: [currentConfig.statisticField],
-        returnGeometry: false
-      });
+        if (calculatedValue !== null && calculatedValue !== undefined) {
+          if (currentConfig.divisor && currentConfig.divisor !== 0) {
+            calculatedValue /= currentConfig.divisor;
+          }
+          setMainValue(calculatedValue.toFixed(currentConfig.decimalPlaces));
 
-      const records = queryResult?.records || [];
-      setTotalRecords(records.length);
-
-      // Calculate the primary statistic
-      const calculatedValue = calculateStatistic(
-        records,
-        currentConfig.statisticField,
-        currentConfig.statisticType || 'SUM'
-      );
-
-      setPrimaryValue(calculatedValue);
-
-      // Calculate secondary value (percentage) if needed
-      if (currentConfig.showSecondaryValue && calculatedValue !== null) {
-        // For secondary value, we might want to show percentage of total
-        // This could be enhanced to compare against a baseline or total dataset
-        // For now, we'll show the percentage of records that have non-zero values
-        const nonZeroRecords = records.filter(record => {
-          const value = record.getData()[currentConfig.statisticField];
-          return typeof value === 'number' && value > 0;
-        });
-        const percentage = records.length > 0 ? (nonZeroRecords.length / records.length) * 100 : 0;
-        setSecondaryValue(percentage);
+          // Calculate and set secondary value if enabled and denominator is provided
+          if (currentConfig.showSecondaryValue) {
+            if (currentConfig.secondaryValueDenominator && currentConfig.secondaryValueDenominator !== 0) {
+              const percentage = (calculatedValue / currentConfig.secondaryValueDenominator) * 100;
+              setSecondaryDisplayValue(percentage.toFixed(currentConfig.secondaryDecimalPlaces));
+            } else {
+              // If no denominator, maybe just show the main value again or a placeholder
+              // For now, let's clear it or show a specific message if denominator is missing
+              setSecondaryDisplayValue(''); // Or "N/A" or some other indicator
+            }
+          } else {
+            setSecondaryDisplayValue('');
+          }
+        } else {
+          // Handle case where statistic result is null (e.g., count on no features)
+          setMainValue(0..toFixed(currentConfig.decimalPlaces));
+          setSecondaryDisplayValue('');
+        }
       } else {
-        setSecondaryValue(null);
+        // No records returned from statistic query (could be valid, e.g., count is 0)
+        setMainValue(0..toFixed(currentConfig.decimalPlaces));
+        setSecondaryDisplayValue('');
       }
-
-    } catch (err) {
-      console.error('Error querying data:', err);
-      setError(err.message || 'Failed to load data');
-      setPrimaryValue(null);
-      setSecondaryValue(null);
+    } catch (error) {
+      console.error(`Indicator Widget (${id}): Error fetching statistics:`, error);
+      setMainValue('Error');
+      setSecondaryDisplayValue('');
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [useDataSources, currentConfig, dataSource, id]); // Add id to dependencies for logging
 
-  // Effect to run query when dependencies change
+  // Effect to fetch data when config or selected data sources change
   useEffect(() => {
-    queryAndCalculate();
-  }, [useDataSources, currentConfig.statisticField, currentConfig.statisticType, currentConfig.divisor]);
+    fetchData();
+  }, [fetchData]); // fetchData is memoized, this runs when its dependencies change
 
-  // Listen for data source changes (including filter changes)
+  // Effect to listen for data source changes (e.g., filters applied by other widgets)
   useEffect(() => {
-    if (!useDataSources || useDataSources.length === 0) return;
-
-    const dsManager = DataSourceManager.getInstance();
-    const ds = dsManager.getDataSource(useDataSources[0].dataSourceId);
-
-    if (ds) {
-      // Listen for data source updates (including filter changes)
-      const handleDataSourceChange = () => {
-        queryAndCalculate();
+    if (dataSource) {
+      const handleDataSourceInfoChange = () => {
+        // console.log(`Indicator Widget (${id}): Data source info changed, refetching.`);
+        fetchData();
       };
 
-      // Subscribe to data source events
-      ds.ready().then(() => {
-        ds.on('records-change', handleDataSourceChange);
-      });
+      // Cast dataSource to any to satisfy TypeScript for .on() and .off() methods
+      const eventedDataSource = dataSource as any;
 
-      // Cleanup function
+      eventedDataSource.on('DATA_SOURCE_INFO_CHANGE', handleDataSourceInfoChange);
+      eventedDataSource.on('SOURCE_RECORDS_CHANGE', handleDataSourceInfoChange);
+
       return () => {
-        ds.off('records-change', handleDataSourceChange);
+        eventedDataSource.off('DATA_SOURCE_INFO_CHANGE', handleDataSourceInfoChange);
+        eventedDataSource.off('SOURCE_RECORDS_CHANGE', handleDataSourceInfoChange);
       };
     }
-  }, [useDataSources]);
+  }, [dataSource, fetchData, id]); // Add id to dependencies for logging
 
-  // Render the widget
+  // Basic styling (can be expanded or moved to CSS files)
+  const widgetStyle = css`
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    padding: 1rem;
+    text-align: center;
+    box-sizing: border-box;
+  `;
+
+  const mainValueStyle = css`
+    font-size: 2em; /* Example size, make configurable later */
+    font-weight: bold;
+    line-height: 1.1;
+    color: ${currentConfig.prefix || currentConfig.suffix ? 'inherit' : '#333'}; /* Example color */
+  `;
+
+  const secondaryValueStyle = css`
+    font-size: 0.9em; /* Example size */
+    color: #6c757d; /* Example color */
+    margin-top: 0.25rem;
+  `;
+
+  if (isLoading) {
+    return <div css={widgetStyle} className="jimu-widget">Loading...</div>;
+  }
+
   if (!useDataSources || useDataSources.length === 0) {
-    return (
-      <div className="custom-indicator-widget jimu-widget p-3 text-center">
-        <p className="text-muted">No data source selected.</p>
-        <p className="text-muted small">Configure this widget to select a data source.</p>
-      </div>
-    );
+    return <div css={widgetStyle} className="jimu-widget">Please configure a data source in settings.</div>;
   }
 
   if (!currentConfig.statisticField) {
-    return (
-      <div className="custom-indicator-widget jimu-widget p-3 text-center">
-        <p className="text-muted">No field selected.</p>
-        <p className="text-muted small">Configure this widget to select a field for calculation.</p>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="custom-indicator-widget jimu-widget p-3 text-center">
-        <p className="text-danger">Error loading data</p>
-        <p className="text-muted small">{error}</p>
-      </div>
-    );
+    return <div css={widgetStyle} className="jimu-widget">Please select a field in settings.</div>;
   }
 
   return (
-    <div className="custom-indicator-widget jimu-widget p-3 text-center">
-      {isLoading ? (
-        <div>
-          <p style={{ fontSize: '2em', fontWeight: 'bold', margin: '10px 0' }}>
-            Loading...
-          </p>
+    <div css={widgetStyle} className="custom-indicator-widget jimu-widget">
+      <div>
+        <span css={mainValueStyle}>
+          {currentConfig.prefix}{mainValue}{currentConfig.suffix}
+        </span>
+      </div>
+      {currentConfig.showSecondaryValue && secondaryDisplayValue !== '' && (
+        <div css={secondaryValueStyle}>
+          {currentConfig.secondaryPrefix}{secondaryDisplayValue}{currentConfig.secondarySuffix}
         </div>
-      ) : (
-        <React.Fragment>
-          {/* Primary value display */}
-          <div style={{ fontSize: '2.5em', fontWeight: 'bold', margin: '10px 0', lineHeight: '1.2' }}>
-            {currentConfig.prefix}{primaryValue !== null ? formatNumber(primaryValue) : '---'}{currentConfig.suffix}
-          </div>
-
-          {/* Secondary value display */}
-          {currentConfig.showSecondaryValue && secondaryValue !== null && (
-            <div style={{ fontSize: '1em', color: '#666', margin: '5px 0' }}>
-              {currentConfig.secondaryPrefix}{secondaryValue.toFixed(1)}{currentConfig.secondarySuffix}
-            </div>
-          )}
-
-          {/* Debug info (can be removed in production) */}
-          <div className="text-muted small" style={{ marginTop: '10px' }}>
-            Records: {totalRecords} | Field: {currentConfig.statisticField} | Type: {currentConfig.statisticType}
-          </div>
-        </React.Fragment>
+      )}
+      {currentConfig.showSecondaryValue &&
+       secondaryDisplayValue === '' &&
+       currentConfig.secondaryValueDenominator === undefined && (
+        <div css={secondaryValueStyle} className="text-disabled small">
+          (Configure denominator for secondary value)
+        </div>
       )}
     </div>
   );
